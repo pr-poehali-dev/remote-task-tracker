@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Icon from "@/components/ui/icon";
 import {
   exportToExcel, useExcelImport,
@@ -137,76 +137,230 @@ export function OrdersView() {
 }
 
 // --- REPORTS ---
-export function ReportsView() {
-  const [items, setItems] = useState<object[]>([]);
-  const { ref, handle } = useExcelImport<object>((rows) => setItems(rows));
-  const doExport = () => exportToExcel(items, "отчётность");
+type ReportSubSection = "daily" | "extra" | "monthly";
 
-  const months = ["Ноя", "Дек", "Янв", "Фев", "Мар", "Апр"];
-  const values = [820, 1100, 950, 1350, 1200, 1480];
-  const maxVal = Math.max(...values);
+type ReportEntry = {
+  id: number;
+  title: string;
+  date: string;
+  tableUrl: string;
+  photos: string[];
+};
+
+function useReportSection(storageKey: string) {
+  const [entries, setEntries] = useState<ReportEntry[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState("");
+  const [tableUrl, setTableUrl] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const photoRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        setPhotos(prev => [...prev, ev.target?.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
+
+  const handleAdd = () => {
+    if (!title.trim()) return;
+    const entry: ReportEntry = {
+      id: Date.now(),
+      title: title.trim(),
+      date,
+      tableUrl: tableUrl.trim(),
+      photos: [...photos],
+    };
+    setEntries(prev => [entry, ...prev]);
+    setTitle(""); setDate(""); setTableUrl(""); setPhotos([]);
+    setShowForm(false);
+  };
+
+  const handleDelete = (id: number) => {
+    setEntries(prev => prev.filter(e => e.id !== id));
+  };
+
+  return { entries, showForm, setShowForm, title, setTitle, date, setDate, tableUrl, setTableUrl, photos, setPhotos, photoRef, handlePhotoUpload, handleAdd, handleDelete };
+}
+
+function ReportSubPanel({ label, color }: { label: string; color: string }) {
+  const s = useReportSection(label);
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold">Отчётность</h2>
-          <p className="text-muted-foreground text-sm mt-1">Данные за последние 6 месяцев</p>
-        </div>
-        <ExcelToolbar onExport={doExport} onImportRef={ref} onImportHandle={handle} label="Скачать Excel" />
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: "Выручка (апр)", value: "—" },
-          { label: "Отгружено единиц", value: "—" },
-          { label: "Средний чек", value: "—" },
-          { label: "Возвратов", value: "—" },
-        ].map((s, i) => (
-          <div key={i} className="bg-card rounded-xl border border-border p-5">
-            <p className="text-xs text-muted-foreground mb-2">{s.label}</p>
-            <p className="text-xl font-bold font-mono mb-1">{s.value}</p>
-            <span className="text-xs text-muted-foreground">Загрузите отчёт для данных</span>
-          </div>
-        ))}
+    <div className="bg-card rounded-xl border border-border overflow-hidden">
+      <div className={`px-5 py-4 border-b border-border flex items-center justify-between ${color}`}>
+        <p className="font-semibold text-sm">{label}</p>
+        <button
+          onClick={() => s.setShowForm(v => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-colors"
+        >
+          <Icon name={s.showForm ? "X" : "Plus"} size={13} />
+          {s.showForm ? "Отмена" : "Добавить"}
+        </button>
       </div>
 
-      {items.length > 0 && (
-        <div className="bg-card rounded-xl border border-border overflow-hidden mb-5">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  {Object.keys(items[0]).map(k => (
-                    <th key={k} className="text-left px-5 py-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{k}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {items.map((row, i) => (
-                  <tr key={i} className="hover:bg-muted/30 transition-colors">
-                    {Object.values(row as Record<string, unknown>).map((v, j) => (
-                      <td key={j} className="px-5 py-3.5 text-sm">{String(v)}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {s.showForm && (
+        <div className="px-5 py-4 border-b border-border bg-muted/20 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Название отчёта *</label>
+              <input
+                value={s.title}
+                onChange={e => s.setTitle(e.target.value)}
+                placeholder="Введите название..."
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Дата</label>
+              <input
+                type="date"
+                value={s.date}
+                onChange={e => s.setDate(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
           </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Ссылка на таблицу (Google Sheets, Excel Online и т.д.)</label>
+            <input
+              value={s.tableUrl}
+              onChange={e => s.setTableUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Фотографии</label>
+            <input ref={s.photoRef} type="file" accept="image/*" multiple className="hidden" onChange={s.handlePhotoUpload} />
+            <button
+              onClick={() => s.photoRef.current?.click()}
+              className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-lg text-sm text-muted-foreground hover:bg-muted/40 transition-colors w-full justify-center"
+            >
+              <Icon name="ImagePlus" size={15} />
+              Добавить фото
+            </button>
+            {s.photos.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {s.photos.map((src, i) => (
+                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border group">
+                    <img src={src} className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => s.setPhotos(prev => prev.filter((_, j) => j !== i))}
+                      className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                    >
+                      <Icon name="X" size={14} className="text-white" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={s.handleAdd}
+            disabled={!s.title.trim()}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+          >
+            Сохранить отчёт
+          </button>
         </div>
       )}
 
-      <div className="bg-card rounded-xl border border-border p-6">
-        <p className="text-sm font-semibold mb-6 text-muted-foreground uppercase tracking-wide">Отгрузки по месяцам (тыс. ₽)</p>
-        <div className="flex items-end gap-3 h-48">
-          {months.map((m, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-2">
-              <span className="text-xs font-mono text-muted-foreground">{values[i]}</span>
-              <div className="w-full rounded-t-md bg-primary/80 hover:bg-primary transition-colors cursor-pointer" style={{ height: `${(values[i] / maxVal) * 160}px` }} />
-              <span className="text-xs text-muted-foreground">{m}</span>
+      {s.entries.length === 0 && !s.showForm ? (
+        <div className="py-10 text-center text-muted-foreground text-sm">
+          Нет отчётов — нажмите «Добавить»
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {s.entries.map(entry => (
+            <div key={entry.id} className="px-5 py-4 hover:bg-muted/20 transition-colors">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-semibold text-sm truncate">{entry.title}</p>
+                    {entry.date && (
+                      <span className="text-xs text-muted-foreground flex-shrink-0">{entry.date}</span>
+                    )}
+                  </div>
+                  {entry.tableUrl && (
+                    <a
+                      href={entry.tableUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                    >
+                      <Icon name="ExternalLink" size={12} />
+                      Открыть таблицу
+                    </a>
+                  )}
+                  {entry.photos.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {entry.photos.map((src, i) => (
+                        <a key={i} href={src} target="_blank" rel="noopener noreferrer">
+                          <img src={src} className="w-14 h-14 rounded-lg object-cover border border-border hover:opacity-80 transition-opacity" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => s.handleDelete(entry.id)}
+                  className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors flex-shrink-0"
+                >
+                  <Icon name="Trash2" size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+export function ReportsView() {
+  const [sub, setSub] = useState<ReportSubSection>("daily");
+
+  const tabs: { id: ReportSubSection; label: string; icon: string; color: string; panelColor: string }[] = [
+    { id: "daily", label: "Ежедневные отчёты", icon: "CalendarCheck", color: "text-blue-600", panelColor: "bg-blue-50/60 text-blue-700" },
+    { id: "extra", label: "Дополнительные отчёты", icon: "FilePlus", color: "text-emerald-600", panelColor: "bg-emerald-50/60 text-emerald-700" },
+    { id: "monthly", label: "Ежемесячные отчёты", icon: "CalendarDays", color: "text-purple-600", panelColor: "bg-purple-50/60 text-purple-700" },
+  ];
+
+  const active = tabs.find(t => t.id === sub)!;
+
+  return (
+    <div className="animate-fade-in">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold">Отчётность</h2>
+        <p className="text-muted-foreground text-sm mt-1">Управление отчётами по подразделам</p>
       </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6 border-b border-border">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setSub(t.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              sub === t.id
+                ? `border-primary ${t.color}`
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon name={t.icon} size={15} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <ReportSubPanel key={sub} label={active.label} color={active.panelColor} />
     </div>
   );
 }
