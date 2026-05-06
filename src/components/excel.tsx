@@ -18,7 +18,16 @@ export type CatalogItem = {
   ads?: string;
   comment?: string;
 };
-export type StockItem = { warehouse: string; total: number; reserved: number; available: number; fill: number };
+export type StockItem = {
+  sellerArticle?: string;
+  wbArticle?: string;
+  size?: string;
+  barcode?: string;
+  stockFF?: number;
+  stockWB?: number;
+  totalStock?: number;
+  inTransit?: number;
+};
 export type Invoice = { number: string; date: string; supplier: string; amount: string; status: string; type: string };
 export type Defect = { product: string; qty: number; date: string; reason: string; responsible: string; status: string };
 export type Order = { client: string; items: number; amount: string; date: string; status: string; priority: string };

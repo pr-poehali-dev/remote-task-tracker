@@ -287,72 +287,187 @@ export function CatalogView() {
 }
 
 // --- STOCK ---
+type StockSortKey = keyof StockItem;
+
 export function StockView() {
   const [items, setItems] = useState<StockItem[]>([]);
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<StockSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sizeFilter, setSizeFilter] = useState("Все");
+
   const { ref, handle } = useExcelImport<StockItem>((rows) => setItems(rows));
   const doExport = () => exportToExcel(items, "остатки_на_складах");
 
-  const totalAll = items.reduce((s, w) => s + Number(w.total || 0), 0);
-  const reservedAll = items.reduce((s, w) => s + Number(w.reserved || 0), 0);
-  const availableAll = items.reduce((s, w) => s + Number(w.available || 0), 0);
+  const sizes = ["Все", ...Array.from(new Set(items.map(i => i.size).filter(Boolean) as string[]))];
+
+  const n = (v: unknown) => Number(v || 0);
+
+  const totalFF = items.reduce((s, i) => s + n(i.stockFF), 0);
+  const totalWB = items.reduce((s, i) => s + n(i.stockWB), 0);
+  const totalAll = items.reduce((s, i) => s + n(i.totalStock), 0);
+  const totalTransit = items.reduce((s, i) => s + n(i.inTransit), 0);
+
+  const toggleSort = (key: StockSortKey) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const filtered = items
+    .filter(item => {
+      const q = search.toLowerCase();
+      const matchSearch = !q
+        || item.sellerArticle?.toLowerCase().includes(q)
+        || item.wbArticle?.toLowerCase().includes(q)
+        || item.barcode?.toLowerCase().includes(q)
+        || item.size?.toLowerCase().includes(q);
+      const matchSize = sizeFilter === "Все" || item.size === sizeFilter;
+      return matchSearch && matchSize;
+    })
+    .sort((a, b) => {
+      if (!sortKey) return 0;
+      const av = a[sortKey] ?? "";
+      const bv = b[sortKey] ?? "";
+      const isNum = !isNaN(Number(av)) && !isNaN(Number(bv));
+      const cmp = isNum ? Number(av) - Number(bv) : String(av).localeCompare(String(bv), "ru");
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+  const SortTH = ({ field, children, align = "left" }: { field: StockSortKey; children: React.ReactNode; align?: string }) => {
+    const active = sortKey === field;
+    return (
+      <th
+        onClick={() => toggleSort(field)}
+        className={`px-3 py-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-foreground transition-colors text-${align} ${active ? "text-primary" : ""}`}
+      >
+        <span className="inline-flex items-center gap-1">
+          {children}
+          <span className="opacity-50">
+            {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+          </span>
+        </span>
+      </th>
+    );
+  };
 
   return (
     <div className="animate-fade-in">
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Остатки на складах</h2>
-          <p className="text-muted-foreground text-sm mt-1">{items.length} складов</p>
+          <h2 className="text-2xl font-bold">Остатки товаров на складах</h2>
+          <p className="text-muted-foreground text-sm mt-1">{items.length} позиций</p>
         </div>
         <ExcelToolbar onExport={doExport} onImportRef={ref} onImportHandle={handle} label="Скачать Excel" />
       </div>
 
-      {items.length === 0 ? <EmptyState onImport={() => ref.current?.click()} /> : (
+      {items.length > 0 && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
             {[
-              { label: "Общий остаток", value: totalAll.toLocaleString("ru-RU"), icon: "Box" },
-              { label: "Зарезервировано", value: reservedAll.toLocaleString("ru-RU"), icon: "Lock" },
-              { label: "Свободно", value: availableAll.toLocaleString("ru-RU"), icon: "Unlock" },
-              { label: "Складов", value: items.length, icon: "Warehouse" },
+              { label: "Остаток на ФФ", value: totalFF.toLocaleString("ru-RU"), icon: "Warehouse", color: "bg-blue-50 text-blue-600" },
+              { label: "Остаток WB", value: totalWB.toLocaleString("ru-RU"), icon: "Store", color: "bg-teal-50 text-teal-600" },
+              { label: "Общий остаток", value: totalAll.toLocaleString("ru-RU"), icon: "Boxes", color: "bg-emerald-50 text-emerald-600" },
+              { label: "В пути", value: totalTransit.toLocaleString("ru-RU"), icon: "Truck", color: "bg-amber-50 text-amber-600" },
             ].map((s, i) => (
-              <div key={i} className="bg-card rounded-xl p-5 border border-border">
-                <div className="flex items-center gap-2 mb-3">
-                  <Icon name={s.icon} size={16} className="text-muted-foreground" />
+              <div key={i} className="bg-card rounded-xl p-4 border border-border flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${s.color}`}>
+                  <Icon name={s.icon} size={18} />
+                </div>
+                <div>
+                  <p className="text-xl font-bold font-mono">{s.value}</p>
                   <p className="text-xs text-muted-foreground">{s.label}</p>
                 </div>
-                <p className="text-3xl font-bold font-mono">{s.value}</p>
               </div>
             ))}
           </div>
-          <div className="grid gap-4">
-            {items.map((w, i) => {
-              const fill = Number(w.fill || 0);
-              return (
-                <div key={i} className="bg-card rounded-xl border border-border p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
-                        <Icon name="Warehouse" size={18} className="text-teal-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">{w.warehouse}</p>
-                        <p className="text-xs text-muted-foreground">Заполненность: {fill}%</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-6 text-right">
-                      <div><p className="text-xs text-muted-foreground">Всего</p><p className="font-bold font-mono">{Number(w.total || 0).toLocaleString("ru-RU")}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Резерв</p><p className="font-bold font-mono text-amber-600">{Number(w.reserved || 0).toLocaleString("ru-RU")}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Свободно</p><p className="font-bold font-mono text-emerald-600">{Number(w.available || 0).toLocaleString("ru-RU")}</p></div>
-                    </div>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-2">
-                    <div className={`h-2 rounded-full transition-all ${fill >= 85 ? "bg-red-400" : fill >= 60 ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${Math.min(fill, 100)}%` }} />
-                  </div>
-                </div>
-              );
-            })}
+
+          {/* Search + filters */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <div className="relative flex-1 min-w-[200px]">
+              <Icon name="Search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Поиск по артикулу, баркоду..."
+                className="w-full pl-9 pr-4 py-2 text-sm border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <select
+              value={sizeFilter}
+              onChange={e => setSizeFilter(e.target.value)}
+              className="px-3 py-2 text-sm border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              {sizes.map(s => <option key={s}>{s}</option>)}
+            </select>
+            {(sortKey || search || sizeFilter !== "Все") && (
+              <button
+                onClick={() => { setSortKey(null); setSearch(""); setSizeFilter("Все"); }}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm border border-border rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors"
+              >
+                <Icon name="X" size={14} />
+                Сбросить
+              </button>
+            )}
           </div>
         </>
+      )}
+
+      {items.length === 0 ? (
+        <EmptyState onImport={() => ref.current?.click()} />
+      ) : (
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <SortTH field="sellerArticle">Арт. продавца</SortTH>
+                  <SortTH field="wbArticle">Арт. WB</SortTH>
+                  <SortTH field="size">Размер</SortTH>
+                  <SortTH field="barcode">Баркод</SortTH>
+                  <SortTH field="stockFF" align="right">Остаток ФФ</SortTH>
+                  <SortTH field="stockWB" align="right">Остаток WB</SortTH>
+                  <SortTH field="totalStock" align="right">Общий остаток</SortTH>
+                  <SortTH field="inTransit" align="right">В пути</SortTH>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center py-10 text-muted-foreground text-sm">Ничего не найдено</td></tr>
+                ) : filtered.map((item, i) => {
+                  const total = n(item.stockFF) + n(item.stockWB);
+                  const isLow = total > 0 && total <= 5;
+                  const isOut = total === 0;
+                  return (
+                    <tr key={i} className={`hover:bg-muted/20 transition-colors ${isOut ? "bg-red-50/40" : isLow ? "bg-amber-50/30" : ""}`}>
+                      <td className="px-3 py-3.5 font-mono text-sm font-medium text-primary">{item.sellerArticle || "—"}</td>
+                      <td className="px-3 py-3.5 font-mono text-sm text-muted-foreground">{item.wbArticle || "—"}</td>
+                      <td className="px-3 py-3.5 text-sm">{item.size || "—"}</td>
+                      <td className="px-3 py-3.5 font-mono text-xs text-muted-foreground">{item.barcode || "—"}</td>
+                      <td className="px-3 py-3.5 text-right font-mono text-sm font-medium">{n(item.stockFF).toLocaleString("ru-RU")}</td>
+                      <td className="px-3 py-3.5 text-right font-mono text-sm font-medium">{n(item.stockWB).toLocaleString("ru-RU")}</td>
+                      <td className={`px-3 py-3.5 text-right font-mono text-sm font-bold ${isOut ? "text-red-500" : isLow ? "text-amber-500" : "text-emerald-600"}`}>
+                        {n(item.totalStock || total).toLocaleString("ru-RU")}
+                      </td>
+                      <td className="px-3 py-3.5 text-right font-mono text-sm text-amber-600">{n(item.inTransit).toLocaleString("ru-RU")}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {filtered.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/60">
+                    <td colSpan={4} className="px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Итого</td>
+                    <td className="px-3 py-3 text-right font-mono text-sm font-bold">{filtered.reduce((s, i) => s + n(i.stockFF), 0).toLocaleString("ru-RU")}</td>
+                    <td className="px-3 py-3 text-right font-mono text-sm font-bold">{filtered.reduce((s, i) => s + n(i.stockWB), 0).toLocaleString("ru-RU")}</td>
+                    <td className="px-3 py-3 text-right font-mono text-sm font-bold text-emerald-600">{filtered.reduce((s, i) => s + n(i.totalStock || n(i.stockFF) + n(i.stockWB)), 0).toLocaleString("ru-RU")}</td>
+                    <td className="px-3 py-3 text-right font-mono text-sm font-bold text-amber-600">{filtered.reduce((s, i) => s + n(i.inTransit), 0).toLocaleString("ru-RU")}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );
