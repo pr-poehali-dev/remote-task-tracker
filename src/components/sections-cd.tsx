@@ -366,170 +366,69 @@ export function ReportsView() {
 }
 
 // --- IDEAS ---
-type IdeaPhoto = { id: number; src: string; comment: string };
-
-type IdeaCard = {
+type IdeaEntry = {
   id: number;
-  title: string;
-  status: string;
-  date: string;
-  votes: number;
-  photos: IdeaPhoto[];
+  src: string;
+  description: string;
+  createdAt: string;
 };
 
-function IdeaCardView({ card, onDelete, onUpdate }: {
-  card: IdeaCard;
-  onDelete: () => void;
-  onUpdate: (updated: IdeaCard) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [commentDraft, setCommentDraft] = useState<Record<number, string>>({});
-  const photoRef = useRef<HTMLInputElement>(null);
+export function IdeasView() {
+  const [entries, setEntries] = useState<IdeaEntry[]>([]);
+  const [pendingPhotos, setPendingPhotos] = useState<{ src: string; description: string }[]>([]);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    files.forEach(file => {
+  const readFiles = (files: File[]) => {
+    files.filter(f => f.type.startsWith("image/")).forEach(file => {
       const reader = new FileReader();
       reader.onload = ev => {
-        const newPhoto: IdeaPhoto = { id: Date.now() + Math.random(), src: ev.target?.result as string, comment: "" };
-        onUpdate({ ...card, photos: [...card.photos, newPhoto] });
+        setPendingPhotos(prev => [...prev, { src: ev.target?.result as string, description: "" }]);
       };
       reader.readAsDataURL(file);
     });
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    readFiles(Array.from(e.target.files || []));
     e.target.value = "";
   };
 
-  const updatePhotoComment = (photoId: number, comment: string) => {
-    onUpdate({ ...card, photos: card.photos.map(p => p.id === photoId ? { ...p, comment } : p) });
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    readFiles(Array.from(e.dataTransfer.files));
   };
 
-  const deletePhoto = (photoId: number) => {
-    onUpdate({ ...card, photos: card.photos.filter(p => p.id !== photoId) });
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+
+  const removePending = (i: number) => {
+    setPendingPhotos(prev => prev.filter((_, j) => j !== i));
   };
 
-  const vote = (delta: number) => {
-    onUpdate({ ...card, votes: Math.max(0, card.votes + delta) });
+  const updateDesc = (i: number, val: string) => {
+    setPendingPhotos(prev => prev.map((p, j) => j === i ? { ...p, description: val } : p));
   };
 
-  return (
-    <div className="bg-card rounded-xl border border-border overflow-hidden transition-all">
-      {/* Header row */}
-      <div className="flex items-center gap-3 px-5 py-4">
-        {/* Votes */}
-        <div className="flex flex-col items-center gap-0.5 w-10 flex-shrink-0">
-          <button onClick={() => vote(1)} className="text-muted-foreground hover:text-purple-500 transition-colors">
-            <Icon name="ChevronUp" size={18} />
-          </button>
-          <span className="font-bold font-mono text-base leading-tight">{card.votes}</span>
-          <button onClick={() => vote(-1)} className="text-muted-foreground hover:text-red-400 transition-colors">
-            <Icon name="ChevronDown" size={16} />
-          </button>
-        </div>
-
-        {/* Title + meta */}
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm">{card.title}</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            {card.date && <span className="text-xs text-muted-foreground">{card.date}</span>}
-            {card.photos.length > 0 && (
-              <span className="text-xs text-muted-foreground">· {card.photos.length} фото</span>
-            )}
-          </div>
-        </div>
-
-        <StatusBadge status={card.status} />
-
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
-        >
-          <Icon name={expanded ? "ChevronUp" : "ChevronDown"} size={16} />
-        </button>
-
-        <button
-          onClick={onDelete}
-          className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors"
-        >
-          <Icon name="Trash2" size={14} />
-        </button>
-      </div>
-
-      {/* Expanded: photos + comments */}
-      {expanded && (
-        <div className="border-t border-border px-5 py-4 space-y-4">
-          <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} />
-
-          {/* Photo grid */}
-          {card.photos.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {card.photos.map(photo => (
-                <div key={photo.id} className="space-y-1.5">
-                  <div className="relative rounded-xl overflow-hidden border border-border group aspect-square bg-muted">
-                    <img src={photo.src} className="w-full h-full object-cover" />
-                    <button
-                      onClick={() => deletePhoto(photo.id)}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Icon name="X" size={11} />
-                    </button>
-                  </div>
-                  <textarea
-                    value={commentDraft[photo.id] ?? photo.comment}
-                    onChange={e => setCommentDraft(prev => ({ ...prev, [photo.id]: e.target.value }))}
-                    onBlur={() => {
-                      updatePhotoComment(photo.id, commentDraft[photo.id] ?? photo.comment);
-                    }}
-                    placeholder="Комментарий к фото..."
-                    rows={2}
-                    className="w-full text-xs px-2.5 py-1.5 border border-border rounded-lg bg-card resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add photo button */}
-          <button
-            onClick={() => photoRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-xl text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors w-full justify-center"
-          >
-            <Icon name="ImagePlus" size={16} />
-            Добавить фото
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function IdeasView() {
-  const [cards, setCards] = useState<IdeaCard[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [title, setTitle] = useState("");
-  const [status, setStatus] = useState("Идея");
-  const [date, setDate] = useState("");
-
-  const addCard = () => {
-    if (!title.trim()) return;
-    const card: IdeaCard = {
-      id: Date.now(),
-      title: title.trim(),
-      status,
-      date,
-      votes: 0,
-      photos: [],
-    };
-    setCards(prev => [card, ...prev]);
-    setTitle(""); setStatus("Идея"); setDate("");
-    setShowForm(false);
+  const saveAll = () => {
+    if (pendingPhotos.length === 0) return;
+    const now = new Date().toLocaleDateString("ru-RU");
+    const newEntries: IdeaEntry[] = pendingPhotos.map(p => ({
+      id: Date.now() + Math.random(),
+      src: p.src,
+      description: p.description,
+      createdAt: now,
+    }));
+    setEntries(prev => [...newEntries.reverse(), ...prev]);
+    setPendingPhotos([]);
   };
 
-  const updateCard = (id: number, updated: IdeaCard) => {
-    setCards(prev => prev.map(c => c.id === id ? updated : c));
+  const deleteEntry = (id: number) => {
+    setEntries(prev => prev.filter(e => e.id !== id));
   };
 
-  const deleteCard = (id: number) => {
-    setCards(prev => prev.filter(c => c.id !== id));
+  const updateEntryDesc = (id: number, description: string) => {
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, description } : e));
   };
 
   return (
@@ -538,88 +437,120 @@ export function IdeasView() {
         <div>
           <h2 className="text-2xl font-bold">Идеи</h2>
           <p className="text-muted-foreground text-sm mt-1">
-            {cards.length > 0 ? `${cards.length} идей · ${cards.reduce((s, c) => s + c.photos.length, 0)} фото` : "Копилка предложений команды"}
+            {entries.length > 0 ? `${entries.length} идей` : "Загрузите фото — добавьте описание"}
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-        >
-          <Icon name={showForm ? "X" : "Plus"} size={15} />
-          {showForm ? "Отмена" : "Новая идея"}
-        </button>
       </div>
 
-      {/* Add form */}
-      {showForm && (
-        <div className="bg-card rounded-xl border border-border p-5 mb-5 space-y-3 animate-fade-in">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
-              <label className="text-xs text-muted-foreground mb-1 block">Название идеи *</label>
-              <input
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="Опишите идею..."
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-purple-400/40"
-                onKeyDown={e => e.key === "Enter" && addCard()}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Статус</label>
-              <select
-                value={status}
-                onChange={e => setStatus(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-purple-400/40"
-              >
-                {["Идея", "Обсуждение", "В плане", "Реализовано"].map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
+      {/* Drop zone / upload area */}
+      <div
+        ref={dropRef}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onClick={() => fileRef.current?.click()}
+        className="relative border-2 border-dashed border-purple-200 hover:border-purple-400 bg-purple-50/40 hover:bg-purple-50/70 rounded-2xl p-10 mb-5 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all group"
+      >
+        <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileInput} />
+        <div className="w-14 h-14 rounded-2xl bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center transition-colors">
+          <Icon name="ImagePlus" size={26} className="text-purple-500" />
+        </div>
+        <div className="text-center">
+          <p className="font-semibold text-sm text-foreground">Нажмите или перетащите фото</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Любое количество изображений сразу</p>
+        </div>
+      </div>
+
+      {/* Pending: preview + description before save */}
+      {pendingPhotos.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl p-5 mb-5 space-y-4 animate-fade-in">
+          <p className="text-sm font-semibold text-foreground">
+            Добавлено {pendingPhotos.length} фото — введите описания и сохраните
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {pendingPhotos.map((p, i) => (
+              <div key={i} className="flex gap-3 bg-muted/30 rounded-xl p-3">
+                <div className="relative flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden border border-border group">
+                  <img src={p.src} className="w-full h-full object-cover" />
+                  <button
+                    onClick={e => { e.stopPropagation(); removePending(i); }}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Icon name="X" size={10} />
+                  </button>
+                </div>
+                <textarea
+                  value={p.description}
+                  onChange={e => updateDesc(i, e.target.value)}
+                  placeholder="Описание идеи..."
+                  rows={3}
+                  className="flex-1 text-sm px-3 py-2 border border-border rounded-xl bg-card resize-none focus:outline-none focus:ring-2 focus:ring-purple-400/40 placeholder:text-muted-foreground/50"
+                />
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Дата</label>
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-purple-400/40"
-              />
-            </div>
+          <div className="flex items-center gap-2">
             <button
-              onClick={addCard}
-              disabled={!title.trim()}
-              className="mt-5 px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+              onClick={saveAll}
+              className="px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
             >
-              Добавить
+              Сохранить {pendingPhotos.length > 1 ? `все ${pendingPhotos.length}` : ""}
+            </button>
+            <button
+              onClick={() => setPendingPhotos([])}
+              className="px-4 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+            >
+              Отмена
             </button>
           </div>
         </div>
       )}
 
-      {cards.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
-            <Icon name="Lightbulb" size={28} className="text-purple-400" />
-          </div>
-          <p className="font-semibold text-foreground mb-1">Нет идей</p>
-          <p className="text-sm text-muted-foreground mb-4">Нажмите «Новая идея», чтобы добавить первую</p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-          >
-            <Icon name="Plus" size={15} />
-            Новая идея
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <img src={lightbox} className="max-w-full max-h-full rounded-xl object-contain" />
+          <button className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors">
+            <Icon name="X" size={18} />
           </button>
         </div>
+      )}
+
+      {/* Saved entries */}
+      {entries.length === 0 && pendingPhotos.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+          <Icon name="Lightbulb" size={32} className="text-purple-300 mb-3" />
+          <p className="text-sm">Загрузите первое фото с идеей</p>
+        </div>
       ) : (
-        <div className="grid gap-3">
-          {cards.sort((a, b) => b.votes - a.votes).map(card => (
-            <IdeaCardView
-              key={card.id}
-              card={card}
-              onDelete={() => deleteCard(card.id)}
-              onUpdate={updated => updateCard(card.id, updated)}
-            />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {entries.map(entry => (
+            <div key={entry.id} className="bg-card rounded-2xl border border-border overflow-hidden group hover:border-purple-200 transition-colors">
+              <div className="relative aspect-[4/3] bg-muted cursor-zoom-in" onClick={() => setLightbox(entry.src)}>
+                <img src={entry.src} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                <button
+                  onClick={e => { e.stopPropagation(); deleteEntry(entry.id); }}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                >
+                  <Icon name="Trash2" size={13} />
+                </button>
+                {entry.createdAt && (
+                  <span className="absolute bottom-2 left-2 text-xs text-white/80 bg-black/40 rounded px-1.5 py-0.5">{entry.createdAt}</span>
+                )}
+              </div>
+              <div className="p-3">
+                <textarea
+                  value={entry.description}
+                  onChange={e => updateEntryDesc(entry.id, e.target.value)}
+                  placeholder="Описание идеи..."
+                  rows={2}
+                  className="w-full text-sm px-0 py-0 border-none bg-transparent resize-none focus:outline-none placeholder:text-muted-foreground/40 text-foreground"
+                />
+              </div>
+            </div>
           ))}
         </div>
       )}
