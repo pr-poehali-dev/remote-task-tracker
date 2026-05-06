@@ -1,17 +1,18 @@
 import { useState } from "react";
 import Icon from "@/components/ui/icon";
-import { NAV_ITEMS, type Section } from "@/components/excel";
+import { NAV_ITEMS, type Section, type CatalogItem } from "@/components/excel";
 import { CatalogView, StockView, InvoicesView } from "@/components/sections-ab";
 import { DefectsView, OrdersView, ReportsView, IdeasView } from "@/components/sections-cd";
 
 export default function Index() {
   const [activeSection, setActiveSection] = useState<Section>("catalog");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
 
   const renderSection = () => {
     switch (activeSection) {
-      case "catalog": return <CatalogView />;
-      case "stock": return <StockView />;
+      case "catalog": return <CatalogView items={catalogItems} onItemsChange={setCatalogItems} />;
+      case "stock": return <StockView catalogItems={catalogItems} />;
       case "invoices": return <InvoicesView />;
       case "defects": return <DefectsView />;
       case "orders": return <OrdersView />;

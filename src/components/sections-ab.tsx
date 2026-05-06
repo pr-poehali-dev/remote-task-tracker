@@ -73,8 +73,14 @@ function EditableCell({
   );
 }
 
-export function CatalogView() {
-  const [items, setItems] = useState<CatalogItem[]>([]);
+export function CatalogView({
+  items,
+  onItemsChange,
+}: {
+  items: CatalogItem[];
+  onItemsChange: (items: CatalogItem[]) => void;
+}) {
+  const setItems = onItemsChange;
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Все");
   const [statusFilter, setStatusFilter] = useState("Все");
@@ -82,19 +88,19 @@ export function CatalogView() {
   const { ref, handle } = useExcelImport<CatalogItem>((rows) => setItems(rows));
 
   const updateItem = useCallback((index: number, field: keyof CatalogItem, value: string) => {
-    setItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
-  }, []);
+    onItemsChange(items.map((item, i) => i === index ? { ...item, [field]: value } : item));
+  }, [items, onItemsChange]);
 
   const updatePhoto = useCallback((index: number, src: string) => {
-    setItems(prev => prev.map((item, i) => i === index ? { ...item, photo: src } : item));
-  }, []);
+    onItemsChange(items.map((item, i) => i === index ? { ...item, photo: src } : item));
+  }, [items, onItemsChange]);
 
   const addRow = () => {
-    setItems(prev => [...prev, { name: "Новый товар", category: "", price: 0, stock: 0, status: "В наличии" }]);
+    onItemsChange([...items, { name: "Новый товар", category: "", price: 0, stock: 0, status: "В наличии" }]);
   };
 
   const deleteRow = (index: number) => {
-    setItems(prev => prev.filter((_, i) => i !== index));
+    onItemsChange(items.filter((_, i) => i !== index));
   };
 
   const categories = ["Все", ...Array.from(new Set(items.map(i => i.category).filter(Boolean)))];
@@ -289,7 +295,7 @@ export function CatalogView() {
 // --- STOCK ---
 type StockSortKey = keyof StockItem;
 
-export function StockView() {
+export function StockView({ catalogItems = [] }: { catalogItems?: CatalogItem[] }) {
   const [items, setItems] = useState<StockItem[]>([]);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<StockSortKey | null>(null);
@@ -298,6 +304,33 @@ export function StockView() {
 
   const { ref, handle } = useExcelImport<StockItem>((rows) => setItems(rows));
   const doExport = () => exportToExcel(items, "остатки_на_складах");
+
+  const syncFromCatalog = () => {
+    if (catalogItems.length === 0) return;
+    const catalogRows: StockItem[] = catalogItems.map(c => ({
+      sellerArticle: c.sellerArticle || "",
+      wbArticle: c.wbArticle || "",
+      size: c.size || "",
+      barcode: c.barcode || "",
+      stockFF: 0,
+      stockWB: Number(c.stock) || 0,
+      totalStock: Number(c.stock) || 0,
+      inTransit: 0,
+    }));
+    // merge: update existing rows by sellerArticle, add new ones
+    setItems(prev => {
+      const merged = [...prev];
+      catalogRows.forEach(cr => {
+        const idx = merged.findIndex(m => m.sellerArticle && m.sellerArticle === cr.sellerArticle);
+        if (idx >= 0) {
+          merged[idx] = { ...merged[idx], sellerArticle: cr.sellerArticle, wbArticle: cr.wbArticle, size: cr.size, barcode: cr.barcode };
+        } else {
+          merged.push(cr);
+        }
+      });
+      return merged;
+    });
+  };
 
   const sizes = ["Все", ...Array.from(new Set(items.map(i => i.size).filter(Boolean) as string[]))];
 
@@ -357,7 +390,19 @@ export function StockView() {
           <h2 className="text-2xl font-bold">Остатки товаров на складах</h2>
           <p className="text-muted-foreground text-sm mt-1">{items.length} позиций</p>
         </div>
-        <ExcelToolbar onExport={doExport} onImportRef={ref} onImportHandle={handle} label="Скачать Excel" />
+        <div className="flex items-center gap-2 flex-wrap">
+          {catalogItems.length > 0 && (
+            <button
+              onClick={syncFromCatalog}
+              className="flex items-center gap-2 px-3 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+              title="Подтянуть артикулы, размеры и баркоды из Каталога товаров"
+            >
+              <Icon name="RefreshCw" size={15} />
+              Синхронизировать с каталогом
+            </button>
+          )}
+          <ExcelToolbar onExport={doExport} onImportRef={ref} onImportHandle={handle} label="Скачать Excel" />
+        </div>
       </div>
 
       {items.length > 0 && (
