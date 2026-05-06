@@ -4,7 +4,20 @@ import Icon from "@/components/ui/icon";
 
 export type Section = "catalog" | "stock" | "invoices" | "defects" | "orders" | "reports" | "ideas";
 
-export type CatalogItem = { name: string; category: string; price: number; stock: number; status: string };
+export type CatalogItem = {
+  photo?: string;
+  name: string;
+  sellerArticle?: string;
+  wbArticle?: string;
+  size?: string;
+  barcode?: string;
+  category: string;
+  price: number;
+  stock: number;
+  status: string;
+  ads?: string;
+  comment?: string;
+};
 export type StockItem = { warehouse: string; total: number; reserved: number; available: number; fill: number };
 export type Invoice = { number: string; date: string; supplier: string; amount: string; status: string; type: string };
 export type Defect = { product: string; qty: number; date: string; reason: string; responsible: string; status: string };
