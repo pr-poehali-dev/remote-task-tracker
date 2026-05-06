@@ -366,37 +366,260 @@ export function ReportsView() {
 }
 
 // --- IDEAS ---
+type IdeaPhoto = { id: number; src: string; comment: string };
+
+type IdeaCard = {
+  id: number;
+  title: string;
+  status: string;
+  date: string;
+  votes: number;
+  photos: IdeaPhoto[];
+};
+
+function IdeaCardView({ card, onDelete, onUpdate }: {
+  card: IdeaCard;
+  onDelete: () => void;
+  onUpdate: (updated: IdeaCard) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [commentDraft, setCommentDraft] = useState<Record<number, string>>({});
+  const photoRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const newPhoto: IdeaPhoto = { id: Date.now() + Math.random(), src: ev.target?.result as string, comment: "" };
+        onUpdate({ ...card, photos: [...card.photos, newPhoto] });
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
+
+  const updatePhotoComment = (photoId: number, comment: string) => {
+    onUpdate({ ...card, photos: card.photos.map(p => p.id === photoId ? { ...p, comment } : p) });
+  };
+
+  const deletePhoto = (photoId: number) => {
+    onUpdate({ ...card, photos: card.photos.filter(p => p.id !== photoId) });
+  };
+
+  const vote = (delta: number) => {
+    onUpdate({ ...card, votes: Math.max(0, card.votes + delta) });
+  };
+
+  return (
+    <div className="bg-card rounded-xl border border-border overflow-hidden transition-all">
+      {/* Header row */}
+      <div className="flex items-center gap-3 px-5 py-4">
+        {/* Votes */}
+        <div className="flex flex-col items-center gap-0.5 w-10 flex-shrink-0">
+          <button onClick={() => vote(1)} className="text-muted-foreground hover:text-purple-500 transition-colors">
+            <Icon name="ChevronUp" size={18} />
+          </button>
+          <span className="font-bold font-mono text-base leading-tight">{card.votes}</span>
+          <button onClick={() => vote(-1)} className="text-muted-foreground hover:text-red-400 transition-colors">
+            <Icon name="ChevronDown" size={16} />
+          </button>
+        </div>
+
+        {/* Title + meta */}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm">{card.title}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            {card.date && <span className="text-xs text-muted-foreground">{card.date}</span>}
+            {card.photos.length > 0 && (
+              <span className="text-xs text-muted-foreground">· {card.photos.length} фото</span>
+            )}
+          </div>
+        </div>
+
+        <StatusBadge status={card.status} />
+
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+        >
+          <Icon name={expanded ? "ChevronUp" : "ChevronDown"} size={16} />
+        </button>
+
+        <button
+          onClick={onDelete}
+          className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-500 text-muted-foreground transition-colors"
+        >
+          <Icon name="Trash2" size={14} />
+        </button>
+      </div>
+
+      {/* Expanded: photos + comments */}
+      {expanded && (
+        <div className="border-t border-border px-5 py-4 space-y-4">
+          <input ref={photoRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} />
+
+          {/* Photo grid */}
+          {card.photos.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {card.photos.map(photo => (
+                <div key={photo.id} className="space-y-1.5">
+                  <div className="relative rounded-xl overflow-hidden border border-border group aspect-square bg-muted">
+                    <img src={photo.src} className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => deletePhoto(photo.id)}
+                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Icon name="X" size={11} />
+                    </button>
+                  </div>
+                  <textarea
+                    value={commentDraft[photo.id] ?? photo.comment}
+                    onChange={e => setCommentDraft(prev => ({ ...prev, [photo.id]: e.target.value }))}
+                    onBlur={() => {
+                      updatePhotoComment(photo.id, commentDraft[photo.id] ?? photo.comment);
+                    }}
+                    placeholder="Комментарий к фото..."
+                    rows={2}
+                    className="w-full text-xs px-2.5 py-1.5 border border-border rounded-lg bg-card resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add photo button */}
+          <button
+            onClick={() => photoRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-xl text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors w-full justify-center"
+          >
+            <Icon name="ImagePlus" size={16} />
+            Добавить фото
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function IdeasView() {
-  const [items, setItems] = useState<Idea[]>([]);
-  const { ref, handle } = useExcelImport<Idea>((rows) => setItems(rows));
-  const doExport = () => exportToExcel(items, "идеи");
+  const [cards, setCards] = useState<IdeaCard[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [status, setStatus] = useState("Идея");
+  const [date, setDate] = useState("");
+
+  const addCard = () => {
+    if (!title.trim()) return;
+    const card: IdeaCard = {
+      id: Date.now(),
+      title: title.trim(),
+      status,
+      date,
+      votes: 0,
+      photos: [],
+    };
+    setCards(prev => [card, ...prev]);
+    setTitle(""); setStatus("Идея"); setDate("");
+    setShowForm(false);
+  };
+
+  const updateCard = (id: number, updated: IdeaCard) => {
+    setCards(prev => prev.map(c => c.id === id ? updated : c));
+  };
+
+  const deleteCard = (id: number) => {
+    setCards(prev => prev.filter(c => c.id !== id));
+  };
 
   return (
     <div className="animate-fade-in">
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold">Идеи</h2>
-          <p className="text-muted-foreground text-sm mt-1">Копилка предложений команды</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            {cards.length > 0 ? `${cards.length} идей · ${cards.reduce((s, c) => s + c.photos.length, 0)} фото` : "Копилка предложений команды"}
+          </p>
         </div>
-        <ExcelToolbar onExport={doExport} onImportRef={ref} onImportHandle={handle} label="Скачать Excel" />
+        <button
+          onClick={() => setShowForm(v => !v)}
+          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+        >
+          <Icon name={showForm ? "X" : "Plus"} size={15} />
+          {showForm ? "Отмена" : "Новая идея"}
+        </button>
       </div>
 
-      {items.length === 0 ? <EmptyState onImport={() => ref.current?.click()} /> : (
-        <div className="grid gap-3">
-          {items.map((idea, i) => (
-            <div key={i} className="bg-card rounded-xl border border-border p-5 flex items-center justify-between gap-4 hover:border-purple-200 transition-colors cursor-pointer group">
-              <div className="flex items-center gap-4">
-                <div className="flex flex-col items-center gap-0.5 w-12 flex-shrink-0">
-                  <Icon name="ChevronUp" size={18} className="text-muted-foreground group-hover:text-purple-500 transition-colors" />
-                  <span className="font-bold font-mono text-lg leading-tight">{idea.votes}</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-sm">{idea.title}</p>
-                  {idea.date && <p className="text-xs text-muted-foreground mt-0.5">{idea.date}</p>}
-                </div>
-              </div>
-              <StatusBadge status={idea.status} />
+      {/* Add form */}
+      {showForm && (
+        <div className="bg-card rounded-xl border border-border p-5 mb-5 space-y-3 animate-fade-in">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="text-xs text-muted-foreground mb-1 block">Название идеи *</label>
+              <input
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="Опишите идею..."
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-purple-400/40"
+                onKeyDown={e => e.key === "Enter" && addCard()}
+              />
             </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Статус</label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-purple-400/40"
+              >
+                {["Идея", "Обсуждение", "В плане", "Реализовано"].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Дата</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-purple-400/40"
+              />
+            </div>
+            <button
+              onClick={addCard}
+              disabled={!title.trim()}
+              className="mt-5 px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+            >
+              Добавить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {cards.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
+            <Icon name="Lightbulb" size={28} className="text-purple-400" />
+          </div>
+          <p className="font-semibold text-foreground mb-1">Нет идей</p>
+          <p className="text-sm text-muted-foreground mb-4">Нажмите «Новая идея», чтобы добавить первую</p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            <Icon name="Plus" size={15} />
+            Новая идея
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {cards.sort((a, b) => b.votes - a.votes).map(card => (
+            <IdeaCardView
+              key={card.id}
+              card={card}
+              onDelete={() => deleteCard(card.id)}
+              onUpdate={updated => updateCard(card.id, updated)}
+            />
           ))}
         </div>
       )}
